@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: httpserver
+  name: httpserver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: httpserver
+  template:
+    metadata:
+      labels:
+        app: httpserver
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - image: yiyi108/docker_data/myhttpserver:v1
+          name: httpserver
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 8002
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+              scheme: HTTP
+            periodSeconds: 5
+            timeoutSeconds: 1
+            initialDelaySeconds: 5
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: httpserver-config
+              mountPath: "/etc/httpserver"
+              readOnly: true
+      volumes:
+        - name: httpserver-config
+          configMap:
+            name: httpserver-config
