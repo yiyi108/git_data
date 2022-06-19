@@ -1,1 +1,111 @@
+[root@docker module8]# cat httpserver.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: httpserver
+  name: httpserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpserver
+  template:
+    metadata:
+      labels:
+        app: httpserver
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - image: 192.168.100.210/yiyi/httpserver:v1
+          name: httpserver
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 8002
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+              scheme: HTTP
+            periodSeconds: 5
+            timeoutSeconds: 1
+            initialDelaySeconds: 5
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 200m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 10Mi
+          volumeMounts:
+            - name: httpserver-config
+              mountPath: "/etc/httpserver"
+              readOnly: true
+      volumes:
+        - name: httpserver-config
+          configMap:
+            name: httpserver-config
+                 
+[root@docker module8]# cat httpserver-ingress.yaml 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: httpserver
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  tls:
+    - hosts:
+        - ducky.com
+      secretName: ducky-tls
+  rules:
+    - host: ducky.com
+      http:
+        paths:
+          - path: "/"
+            pathType: Prefix
+            backend:
+              service:
+                name: httpserver
+                port:
+                  number: 80
+                  
+[root@docker module8]# cat httpserver-conf.yaml 
+apiVersion: v1
+data:
+  config.yaml: |-
+    aaa
 
+kind: ConfigMap
+metadata:
+  labels:
+    app: httpserver
+  name: httpserver-config
+  
+[root@docker module8]# cat httpserver-svc.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: httpserver
+  name: httpserver
+  namespace: web
+spec:
+  ports:
+    - name: "web"
+      port: 8002
+      protocol: TCP
+      targetPort: 8002
+  selector:
+    app: httpserver                  
