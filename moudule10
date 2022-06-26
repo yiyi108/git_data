@@ -139,5 +139,4 @@ spec:
           configMap:
             name: httpserver-conf-cm
 [root@docker yaml]# 
-
-安装helm和grafana
+3) 安装helm和grafana......
