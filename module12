@@ -1,0 +1,301 @@
+[root@docker mod12]# cat istio-specs-https.yaml 
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: https-service0
+  namespace: tracing
+spec:
+  gateways:
+    - https-service0
+  hosts:
+    - 'istioexam.com'
+  http:
+  - match:
+      - uri:
+          exact: /service0
+    route:
+      - destination:
+          host: service0 
+          port:
+            number: 80
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: https-service0
+  namespace: tracing
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - hosts:
+        - 'istioexam.com'
+      port:
+        name: https-service0
+        number: 443
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: istioexam-credential
+
+[root@docker mod12]# 
+[root@docker mod12]# cat istio-specs.yaml 
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: service0
+spec:
+  gateways:
+    - service0
+  hosts:
+    - '*'
+  http:
+  - match:
+      - uri:
+          exact: /service0
+    route:
+      - destination:
+          host: service0 
+          port:
+            number: 80
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: service0
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - hosts:
+        - '*'
+      port:
+        name: http-service0
+        number: 80
+        protocol: HTTP
+[root@docker mod12]# 
+~~~~~~~~~~~~~~~~~~~~~~~~~
+[root@docker mod12]# cat service0.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service0
+  template:
+    metadata:
+      labels:
+        app: service0
+    spec:
+      containers:
+        - name: service0
+          imagePullPolicy: Always
+          image: cncamp/service0:v1.0
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service0
+spec:
+  ports:
+    - name: http-service0
+      port: 80
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: service0
+[root@docker mod12]# cat service1.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service1
+  template:
+    metadata:
+      labels:
+        app: service1
+    spec:
+      containers:
+        - name: service1
+          imagePullPolicy: Always
+          image: cncamp/service1:v1.0
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service1
+spec:
+  ports:
+    - name: http-service1
+      port: 80
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: service1
+[root@docker mod12]# cat service2.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service2
+  template:
+    metadata:
+      labels:
+        app: service2
+    spec:
+      containers:
+        - name: service2
+          imagePullPolicy: Always
+          image: cncamp/service2:v1.0
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service2
+spec:
+  ports:
+    - name: http-service2
+      port: 80
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: service2
+[root@docker mod12]# 
+```````````````````````````````
+[root@docker mod12]# cat jaeger.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: istio-system
+  labels:
+    app: jaeger
+spec:
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+      annotations:
+        sidecar.istio.io/inject: "false"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "14269"
+    spec:
+      containers:
+        - name: jaeger
+          image: "docker.io/jaegertracing/all-in-one:1.23"
+          env:
+            - name: BADGER_EPHEMERAL
+              value: "false"
+            - name: SPAN_STORAGE_TYPE
+              value: "badger"
+            - name: BADGER_DIRECTORY_VALUE
+              value: "/badger/data"
+            - name: BADGER_DIRECTORY_KEY
+              value: "/badger/key"
+            - name: COLLECTOR_ZIPKIN_HOST_PORT
+              value: ":9411"
+            - name: MEMORY_MAX_TRACES
+              value: "50000"
+            - name: QUERY_BASE_PATH
+              value: /jaeger
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 14269
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 14269
+          volumeMounts:
+            - name: data
+              mountPath: /badger
+          resources:
+            requests:
+              cpu: 10m
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracing
+  namespace: istio-system
+  labels:
+    app: jaeger
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-query
+      port: 80
+      protocol: TCP
+      targetPort: 16686
+    # Note: Change port name if you add '--query.grpc.tls.enabled=true'
+    - name: grpc-query
+      port: 16685
+      protocol: TCP
+      targetPort: 16685
+  selector:
+    app: jaeger
+---
+# Jaeger implements the Zipkin API. To support swapping out the tracing backend, we use a Service named Zipkin.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: zipkin
+  name: zipkin
+  namespace: istio-system
+spec:
+  ports:
+    - port: 9411
+      targetPort: 9411
+      name: http-query
+  selector:
+    app: jaeger
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: istio-system
+  labels:
+    app: jaeger
+spec:
+  type: ClusterIP
+  ports:
+    - name: jaeger-collector-http
+      port: 14268
+      targetPort: 14268
+      protocol: TCP
+    - name: jaeger-collector-grpc
+      port: 14250
+      targetPort: 14250
+      protocol: TCP
+    - port: 9411
+      targetPort: 9411
+      name: http-zipkin
+  selector:
+    app: jaeger
+[root@docker mod12]# 
+
